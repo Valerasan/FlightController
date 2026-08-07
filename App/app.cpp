@@ -1,4 +1,5 @@
 #include "app.h"
+#include "log.h"
 #include "stm32f4xx_hal.h"
 
 
@@ -13,5 +14,6 @@ extern "C" void app_init(void)
 extern "C" void app_loop(void)
 {
     _LED_Blue_Toggle;
+    log_printf("tick %lu\r\n", HAL_GetTick());
     HAL_Delay(kBlinkPeriodMs);
 }
