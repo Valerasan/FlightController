@@ -15,6 +15,11 @@ extern "C" void app_init(void)
 
 extern "C" void app_loop(void)
 {
+    if (_uartCrsf.frameReady()) {
+        LOG("crsf frame type=0x%02X len=%u", _uartCrsf.frameType(), _uartCrsf.framePayloadLen());
+        _uartCrsf.consumeFrame();
+    }
+
     _LED_Blue_Toggle;
     HAL_Delay(kBlinkPeriodMs);
 }
