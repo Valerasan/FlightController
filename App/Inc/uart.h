@@ -26,7 +26,7 @@ public:
     void localHandle();
     void parseByte(uint8_t byte);
     static void handleRxCallback(UART_HandleTypeDef *huart);
-    
+
     bool frameReady() const { return _frameReady; }
     uint8_t frameType() const { return _readyFrame[0]; }
     const uint8_t* framePayload() const { return &_readyFrame[1]; }
@@ -47,7 +47,6 @@ private:
     uint8_t _rxByte;
 
     uint8_t _rxBufferNum = 0;
-    //uint8_t _rxBuffer[64];
     uint8_t _frame[64];      
     uint8_t _frameLen = 0;
     uint8_t _frameIdx = 0;

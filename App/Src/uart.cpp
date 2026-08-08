@@ -17,6 +17,8 @@ uint8_t crsf_crc8(const uint8_t *data, uint8_t len)
     return crc;
 }
 
+
+
 void UartBase::init() {
     //TODO: add regoster
     _instances[_uartNum++] = this;
