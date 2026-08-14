@@ -1,14 +1,14 @@
 #include "app.h"
 #include "log.h"
 #include "stm32f4xx_hal.h"
-#include "uart.h"
+#include "uart_crsf.h"
 
 constexpr uint32_t kBlinkPeriodMs = 150;
 extern UART_HandleTypeDef huart1;
-UartBase _uartCrsf(&huart1);
+UartCrsf _uartCrsf(&huart1);
 
 constexpr uint8_t kCrsfFrameRcChannelsPacked = 0x16;
-constexpr uint8_t kCrsfChannelCount = 16;
+constexpr uint8_t kCrsfChannelCount = 8;
 
 static void crsf_parse_channels(const uint8_t *payload, uint16_t channels[kCrsfChannelCount])
 {
