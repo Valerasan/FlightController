@@ -4,12 +4,14 @@
 #include "stm32f4xx_hal.h"
 #include "uart_crsf.h"
 #include "imu_lsm6ds3.h"
+#include "attitude_estimator.h"
 
 constexpr uint32_t kBlinkPeriodMs = 150;
 extern UART_HandleTypeDef huart1;
 extern SPI_HandleTypeDef hspi1;
 UartCrsf _uartCrsf(&huart1);
 ImuLsm6ds3 _imu(&hspi1, IMU_CS_GPIO_Port, IMU_CS_Pin);
+AttitudeEstimator _attitude;
 
 constexpr uint8_t kCrsfFrameRcChannelsPacked = 0x16;
 constexpr uint8_t kCrsfChannelCount = 8;
@@ -50,6 +52,11 @@ extern "C" void app_init(void)
 
 extern "C" void app_loop(void)
 {
+    static uint32_t lastTickMs = 0;
+    const uint32_t nowMs = HAL_GetTick();
+    const float dtSeconds = (lastTickMs == 0) ? 0.0f : (nowMs - lastTickMs) / 1000.0f;
+    lastTickMs = nowMs;
+
     if (_uartCrsf.frameReady()) {
         if (_uartCrsf.frameType() == kCrsfFrameRcChannelsPacked) {
             uint16_t channels[kCrsfChannelCount];
@@ -69,8 +76,11 @@ extern "C" void app_loop(void)
     int16_t accel[3];
     int16_t gyro[3];
     if (_imu.readRaw(accel, gyro)) {
-        LOG("who=0x%02X accel=%d,%d,%d gyro=%d,%d,%d",
-            _imu.whoAmI(), accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2]);
+        _attitude.update(accel, gyro, dtSeconds);
+
+        LOG("who=0x%02X accel=%d,%d,%d gyro=%d,%d,%d roll=%.1f pitch=%.1f",
+            _imu.whoAmI(), accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2],
+            _attitude.rollDeg(), _attitude.pitchDeg());
     }
 
     _LED_Blue_Toggle;
