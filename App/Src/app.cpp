@@ -1,11 +1,15 @@
 #include "app.h"
 #include "log.h"
+#include "main.h"
 #include "stm32f4xx_hal.h"
 #include "uart_crsf.h"
+#include "imu_lsm6ds3.h"
 
 constexpr uint32_t kBlinkPeriodMs = 150;
 extern UART_HandleTypeDef huart1;
+extern SPI_HandleTypeDef hspi1;
 UartCrsf _uartCrsf(&huart1);
+ImuLsm6ds3 _imu(&hspi1, IMU_CS_GPIO_Port, IMU_CS_Pin);
 
 constexpr uint8_t kCrsfFrameRcChannelsPacked = 0x16;
 constexpr uint8_t kCrsfChannelCount = 8;
@@ -38,6 +42,10 @@ extern "C" void app_init(void)
 {
     _LED_Blue_On;
     _uartCrsf.init();
+
+    if (!_imu.init()) {
+        LOG("lsm6ds3 init failed (bad WHO_AM_I / SPI wiring?)");
+    }
 }
 
 extern "C" void app_loop(void)
@@ -58,6 +66,12 @@ extern "C" void app_loop(void)
         _uartCrsf.consumeFrame();
     }
 
+    int16_t accel[3];
+    int16_t gyro[3];
+    if (_imu.readRaw(accel, gyro)) {
+        LOG("who=0x%02X accel=%d,%d,%d gyro=%d,%d,%d",
+            _imu.whoAmI(), accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2]);
+    }
 
     _LED_Blue_Toggle;
     HAL_Delay(kBlinkPeriodMs);
