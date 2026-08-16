@@ -28,7 +28,19 @@ bool ImuLsm6ds3::init()
     lsm6ds3_xl_data_rate_set(&_ctx, LSM6DS3_XL_ODR_208Hz);
     lsm6ds3_gy_data_rate_set(&_ctx, LSM6DS3_GY_ODR_208Hz);
 
+    lsm6ds3_int1_route_t val = {0};
+    val.int1_drdy_g = 1;
+    val.int1_drdy_xl = 1;
+    lsm6ds3_pin_int1_route_set(&_ctx, &val);
+
     return true;
+}
+
+bool ImuLsm6ds3::readDebugRegs(uint8_t &ctrl1Xl, uint8_t &ctrl2G, uint8_t &int1Ctrl)
+{
+    return readReg(this, LSM6DS3_CTRL1_XL, &ctrl1Xl, 1) == 0 &&
+           readReg(this, LSM6DS3_CTRL2_G, &ctrl2G, 1) == 0 &&
+           readReg(this, LSM6DS3_INT1_CTRL, &int1Ctrl, 1) == 0;
 }
 
 bool ImuLsm6ds3::readRaw(int16_t accel[3], int16_t gyro[3])

@@ -40,6 +40,31 @@ constexpr uint16_t crsf_to_pwm_us(uint16_t raw)
 }
 
 
+static volatile int16_t s_lastAccel[3];
+static volatile int16_t s_lastGyro[3];
+static volatile uint32_t s_intCount = 0;   // diagnostic: how many times the ISR actually fired
+
+extern "C" void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin != INT1_Pin) {
+        return;
+    }
+    s_intCount++;
+
+    static uint32_t lastTickMs = 0;
+    const uint32_t nowMs = HAL_GetTick();
+    const float dtSeconds = (lastTickMs == 0) ? 0.0f : (nowMs - lastTickMs) / 1000.0f;
+    lastTickMs = nowMs;
+
+    int16_t accel[3];
+    int16_t gyro[3];
+    if (_imu.readRaw(accel, gyro)) {
+        _attitude.update(accel, gyro, dtSeconds);
+        s_lastAccel[0] = accel[0]; s_lastAccel[1] = accel[1]; s_lastAccel[2] = accel[2];
+        s_lastGyro[0] = gyro[0]; s_lastGyro[1] = gyro[1]; s_lastGyro[2] = gyro[2];
+    }
+}
+
 extern "C" void app_init(void)
 {
     _LED_Blue_On;
@@ -48,14 +73,27 @@ extern "C" void app_init(void)
     if (!_imu.init()) {
         LOG("lsm6ds3 init failed (bad WHO_AM_I / SPI wiring?)");
     }
+
+    HAL_Delay(5000);
+    uint8_t ctrl1Xl = 0, ctrl2G = 0, int1Ctrl = 0;
+    if (_imu.readDebugRegs(ctrl1Xl, ctrl2G, int1Ctrl)) {
+        LOG("ctrl1_xl=0x%02X ctrl2_g=0x%02X int1_ctrl=0x%02X", ctrl1Xl, ctrl2G, int1Ctrl);
+    } else {
+        LOG("readDebugRegs SPI failed");
+    }
 }
 
 extern "C" void app_loop(void)
 {
-    static uint32_t lastTickMs = 0;
+    static uint32_t lastLogMs = 0;
     const uint32_t nowMs = HAL_GetTick();
-    const float dtSeconds = (lastTickMs == 0) ? 0.0f : (nowMs - lastTickMs) / 1000.0f;
-    lastTickMs = nowMs;
+    if (nowMs - lastLogMs >= 100) {
+        lastLogMs = nowMs;
+        LOG("int=%lu who=0x%02X accel=%d,%d,%d gyro=%d,%d,%d roll=%.1f pitch=%.1f",
+            s_intCount, _imu.whoAmI(), s_lastAccel[0], s_lastAccel[1], s_lastAccel[2],
+            s_lastGyro[0], s_lastGyro[1], s_lastGyro[2],
+            _attitude.rollDeg(), _attitude.pitchDeg());
+    }
 
     if (_uartCrsf.frameReady()) {
         if (_uartCrsf.frameType() == kCrsfFrameRcChannelsPacked) {
@@ -73,15 +111,8 @@ extern "C" void app_loop(void)
         _uartCrsf.consumeFrame();
     }
 
-    int16_t accel[3];
-    int16_t gyro[3];
-    if (_imu.readRaw(accel, gyro)) {
-        _attitude.update(accel, gyro, dtSeconds);
 
-        LOG("who=0x%02X accel=%d,%d,%d gyro=%d,%d,%d roll=%.1f pitch=%.1f",
-            _imu.whoAmI(), accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2],
-            _attitude.rollDeg(), _attitude.pitchDeg());
-    }
+
 
     _LED_Blue_Toggle;
     HAL_Delay(kBlinkPeriodMs);
