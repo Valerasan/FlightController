@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Монітор орієнтації · Roll / Pitch / Елерони</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oxanium:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+  :root{
+    --bg: #0a0d12;
+    --panel: #10151c;
+    --panel-2: #141a22;
+    --border: #232c37;
+    --sky: #2c5d84;
+    --sky-2: #4a86ab;
+    --ground: #4a3420;
+    --ground-2: #6b4d2c;
+    --amber: #e8a33d;
+    --amber-dim: #7a5a26;
+    --cyan: #6fd6d0;
+    --text: #d8dee5;
+    --text-dim: #6f7c8a;
+    --green: #4caf6d;
+    --red: #d9534f;
+    --radius: 3px;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:
+      radial-gradient(ellipse at 50% -10%, #14202c 0%, var(--bg) 55%);
+    color:var(--text);
+    font-family:'JetBrains Mono', monospace;
+    min-height:100vh;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app{ max-width:1180px; margin:0 auto; padding:18px 16px 40px; }
+
+  header{
+    display:flex; align-items:baseline; justify-content:space-between;
+    flex-wrap:wrap; gap:8px;
+    border-bottom:1px solid var(--border);
+    padding-bottom:12px; margin-bottom:16px;
+  }
+  header h1{
+    font-family:'Oxanium', sans-serif; font-weight:700;
+    font-size:18px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--text); margin:0;
+  }
+  header h1 span{ color:var(--amber); }
+  header .subtitle{
+    font-size:11px; color:var(--text-dim); letter-spacing:.05em;
+  }
+
+  .grid{ display:grid; grid-template-columns:1fr; gap:16px; }
+  @media (min-width:920px){
+    .grid{ grid-template-columns: 1.5fr 1fr; align-items:start; }
+  }
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:14px;
+  }
+  .card-label{
+    font-family:'Oxanium', sans-serif; font-size:11px; font-weight:600;
+    letter-spacing:.16em; text-transform:uppercase; color:var(--text-dim);
+    margin:0 0 10px 0; display:flex; align-items:center; gap:8px;
+  }
+  .card-label::after{ content:''; flex:1; height:1px; background:var(--border); }
+
+  /* ---- 3D viewport ---- */
+  .viewport-panel{
+    position:relative; overflow:hidden;
+    aspect-ratio: 4 / 3;
+    background: linear-gradient(180deg, #101820 0%, #0a0d12 100%);
+  }
+  #canvas3d{ position:absolute; inset:0; cursor:grab; }
+  #canvas3d.grabbing{ cursor:grabbing; }
+  #canvas3d canvas{ display:block; width:100%; height:100%; }
+  .viewport-hint{
+    position:absolute; left:10px; bottom:8px;
+    font-size:10px; color:var(--text-dim); letter-spacing:.04em;
+    pointer-events:none;
+  }
+  .viewport-badge{
+    position:absolute; right:10px; top:8px;
+    font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--text-dim); padding:3px 8px; border:1px solid var(--border);
+    border-radius:2px; background:rgba(10,13,18,.6);
+  }
+
+  /* ---- Attitude indicator (horizon) ---- */
+  .horizon-wrap{ display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  .horizon-circle{
+    width:172px; height:172px; border-radius:50%;
+    overflow:hidden; border:2px solid #2a333f; flex-shrink:0;
+    box-shadow: inset 0 0 18px rgba(0,0,0,.6), 0 0 0 5px #161b22;
+  }
+  .horizon-nums{ display:flex; flex-direction:column; gap:10px; min-width:120px; }
+  .num-row{ display:flex; flex-direction:column; }
+  .num-row .k{ font-family:'Oxanium',sans-serif; font-size:10px; letter-spacing:.14em; color:var(--text-dim); text-transform:uppercase; }
+  .num-row .v{ font-size:22px; font-weight:700; color:var(--cyan); line-height:1.25; }
+  .num-row .v.warn{ color:var(--amber); }
+
+  /* ---- Aileron bars ---- */
+  .aileron-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .aileron-row:last-child{ margin-bottom:0; }
+  .aileron-row .tag{ width:26px; font-family:'Oxanium',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); }
+  .bar-track{
+    position:relative; flex:1; height:14px; background:#0c1116;
+    border:1px solid var(--border); border-radius:2px; overflow:hidden;
+  }
+  .bar-track::before{
+    content:''; position:absolute; left:50%; top:0; bottom:0; width:1px; background:var(--border);
+  }
+  .bar-fill{
+    position:absolute; top:0; bottom:0; width:2px; background:var(--amber);
+    box-shadow:0 0 8px var(--amber);
+    transition:none;
+  }
+  .aileron-row .val{ width:56px; text-align:right; font-size:12px; color:var(--text); }
+
+  /* ---- Connection card ---- */
+  .row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .row:last-child{ margin-bottom:0; }
+  select, button, input[type=range]{
+    font-family:'JetBrains Mono', monospace; font-size:12px;
+  }
+  select{
+    background:#0c1116; color:var(--text); border:1px solid var(--border);
+    border-radius:2px; padding:6px 8px;
+  }
+  button{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+    border-radius:2px; padding:7px 14px; cursor:pointer; letter-spacing:.03em;
+  }
+  button:hover{ border-color:var(--amber); color:var(--amber); }
+  button:active{ transform:translateY(1px); }
+  button.primary{ background:var(--amber); color:#1a1204; border-color:var(--amber); font-weight:700; }
+  button.primary:hover{ color:#1a1204; opacity:.9; }
+  button:disabled{ opacity:.35; cursor:not-allowed; }
+
+  .status{ display:flex; align-items:center; gap:7px; font-size:11px; color:var(--text-dim); }
+  .dot{ width:8px; height:8px; border-radius:50%; background:var(--text-dim); flex-shrink:0; }
+  .dot.ok{ background:var(--green); box-shadow:0 0 6px var(--green); }
+  .dot.err{ background:var(--red); box-shadow:0 0 6px var(--red); }
+  .dot.live{ background:var(--amber); box-shadow:0 0 6px var(--amber); animation:pulse 1.4s infinite; }
+  @keyframes pulse{ 50%{ opacity:.4; } }
+
+  .hint{ font-size:10.5px; color:var(--text-dim); line-height:1.5; }
+  .hint code{ color:var(--cyan); background:#0c1116; padding:1px 4px; border-radius:2px; }
+
+  /* ---- Demo controls ---- */
+  .mode-toggle{ display:flex; border:1px solid var(--border); border-radius:2px; overflow:hidden; }
+  .mode-toggle button{ border:none; border-radius:0; flex:1; background:var(--panel-2); }
+  .mode-toggle button.active{ background:var(--amber); color:#1a1204; font-weight:700; }
+
+  .slider-row{ margin-bottom:12px; }
+  .slider-row:last-child{ margin-bottom:0; }
+  .slider-row .head{ display:flex; justify-content:space-between; font-size:11px; color:var(--text-dim); margin-bottom:4px; }
+  .slider-row .head b{ color:var(--text); font-weight:500; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; appearance:none;
+    height:4px; background:var(--border); border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
+    background:var(--amber); cursor:pointer; border:2px solid #1a1204;
+  }
+  input[type=range]:disabled{ opacity:.3; }
+
+  label.checkline{ display:flex; align-items:center; gap:7px; font-size:11px; color:var(--text-dim); cursor:pointer; user-select:none; }
+  input[type=checkbox]{ accent-color:var(--amber); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <h1>Attitude<span>·</span>Monitor</h1>
+    <div class="subtitle">ROLL / PITCH / AILERON — 3D VISUALIZER</div>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT: 3D viewport -->
+    <div class="card viewport-panel">
+      <div id="canvas3d"></div>
+      <div class="viewport-badge" id="fpsBadge">IMU 1660Hz</div>
+      <div class="viewport-hint">потягни — обертати огляд · колесо — зум</div>
+    </div>
+
+    <!-- RIGHT: instruments -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+
+      <div class="card">
+        <p class="card-label">Attitude Indicator</p>
+        <div class="horizon-wrap">
+          <div class="horizon-circle"><canvas id="horizonCanvas" width="172" height="172"></canvas></div>
+          <div class="horizon-nums">
+            <div class="num-row"><span class="k">Крен · Roll</span><span class="v" id="rollVal">0.0°</span></div>
+            <div class="num-row"><span class="k">Тангаж · Pitch</span><span class="v" id="pitchVal">0.0°</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="card-label">Елерони · Ailerons</p>
+        <div class="aileron-row">
+          <div class="tag">L</div>
+          <div class="bar-track"><div class="bar-fill" id="barL"></div></div>
+          <div class="val" id="valL">0.0°</div>
+        </div>
+        <div class="aileron-row">
+          <div class="tag">R</div>
+          <div class="bar-track"><div class="bar-fill" id="barR"></div></div>
+          <div class="val" id="valR">0.0°</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="card-label">З'єднання · Serial</p>
+        <div class="row">
+          <select id="baudSelect">
+            <option value="9600">9600</option>
+            <option value="57600">57600</option>
+            <option value="115200" selected>115200</option>
+            <option value="230400">230400</option>
+            <option value="460800">460800</option>
+          </select>
+          <button class="primary" id="connectBtn">Підключити</button>
+          <button id="disconnectBtn" disabled>Відʼєднати</button>
+        </div>
+        <div class="row">
+          <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">Не підключено — активний демо-режим</span></div>
+        </div>
+        <div class="hint">
+          Очікуваний формат рядка (закінчується <code>\n</code>):<br>
+          <code>R:12.3,P:-4.5,AL:8.0,AR:-8.0</code><br>
+          або симетрично: <code>R:12.3,P:-4.5,A:8.0</code>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="card-label">Демо-режим</p>
+        <div class="row" style="margin-bottom:14px;">
+          <label class="checkline"><input type="checkbox" id="autoSweep" checked> авто-коливання (для перевірки без апаратури)</label>
+        </div>
+        <div class="slider-row">
+          <div class="head"><span>Крен / Roll</span><b id="sRollLbl">0°</b></div>
+          <input type="range" id="sRoll" min="-60" max="60" value="0" step="0.5">
+        </div>
+        <div class="slider-row">
+          <div class="head"><span>Тангаж / Pitch</span><b id="sPitchLbl">0°</b></div>
+          <input type="range" id="sPitch" min="-45" max="45" value="0" step="0.5">
+        </div>
+        <div class="slider-row">
+          <div class="head"><span>Елерони (диференціал)</span><b id="sAilLbl">0°</b></div>
+          <input type="range" id="sAil" min="-30" max="30" value="0" step="0.5">
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  /* ============ STATE ============ */
+  const target  = { roll:0, pitch:0, aileronL:0, aileronR:0 };
+  const current = { roll:0, pitch:0, aileronL:0, aileronR:0 };
+  let mode = 'demo';        // 'demo' | 'live'
+  let autoSweep = true;
+  let port = null;
+  let keepReading = false;
+
+  /* ============ THREE.JS SETUP ============ */
+  const viewportEl = document.getElementById('canvas3d');
+  const scene = new THREE.Scene();
+  scene.background = null;
+
+  const camera = new THREE.PerspectiveCamera(38, 4/3, 0.1, 100);
+  const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  viewportEl.appendChild(renderer.domElement);
+
+  // lighting
+  scene.add(new THREE.AmbientLight(0x8899aa, 0.65));
+  const key = new THREE.DirectionalLight(0xfff2dd, 1.1);
+  key.position.set(4, 6, 5);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x3f6f9e, 0.6);
+  rim.position.set(-5, 2, -4);
+  scene.add(rim);
+
+  // ground reference grid (static, gives horizon/depth cue)
+  const grid = new THREE.GridHelper(14, 14, 0x27313d, 0x1a2129);
+  grid.position.y = -1.6;
+  scene.add(grid);
+
+  /* ---- build airplane ---- */
+  const planeGroup = new THREE.Group();
+  scene.add(planeGroup);
+
+  const bodyMat  = new THREE.MeshStandardMaterial({ color:0xcfd6dd, roughness:0.55, metalness:0.15 });
+  const accentMat= new THREE.MeshStandardMaterial({ color:0xe8a33d, roughness:0.5, metalness:0.1 });
+  const darkMat  = new THREE.MeshStandardMaterial({ color:0x2a323c, roughness:0.6, metalness:0.2 });
+
+  // fuselage (nose along -Z, tail along +Z)
+  const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.22, 3.0, 10), bodyMat);
+  fuselage.rotation.x = Math.PI/2;
+  fuselage.position.z = 0.2;
+  planeGroup.add(fuselage);
+
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.6, 10), accentMat);
+  nose.rotation.x = -Math.PI/2;
+  nose.position.z = -1.6;
+  planeGroup.add(nose);
+
+  // main wing
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.06, 0.55), bodyMat);
+  wing.position.set(0, -0.02, 0.15);
+  planeGroup.add(wing);
+
+  // ailerons (own pivot groups, hinge at trailing edge of each wing tip)
+  function buildAileron(sideSign){
+    const pivot = new THREE.Group();
+    pivot.position.set(sideSign*1.35, -0.02, 0.42); // hinge line position
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.05, 0.22), accentMat);
+    mesh.position.set(0, 0, 0.11); // offset behind hinge
+    pivot.add(mesh);
+    planeGroup.add(pivot);
+    return pivot;
+  }
+  const aileronPivotL = buildAileron(-1);
+  const aileronPivotR = buildAileron( 1);
+
+  // tail: vertical fin + horizontal stabilizer
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.55, 0.5), darkMat);
+  fin.position.set(0, 0.28, 1.55);
+  planeGroup.add(fin);
+
+  const stab = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.05, 0.35), darkMat);
+  stab.position.set(0, 0, 1.55);
+  planeGroup.add(stab);
+
+  // small canopy accent
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8, 0, Math.PI*2, 0, Math.PI*0.55), darkMat);
+  canopy.position.set(0, 0.16, -0.55);
+  planeGroup.add(canopy);
+
+  /* ---- manual orbit camera ---- */
+  let camTheta = 0.9, camPhi = 1.15, camRadius = 6.2;
+  function updateCamera(){
+    const x = camRadius * Math.sin(camPhi) * Math.sin(camTheta);
+    const y = camRadius * Math.cos(camPhi);
+    const z = camRadius * Math.sin(camPhi) * Math.cos(camTheta);
+    camera.position.set(x, y, z);
+    camera.lookAt(0,0,0);
+  }
+  updateCamera();
+
+  let dragging = false, lastX=0, lastY=0;
+  function pointerDown(x,y){ dragging=true; lastX=x; lastY=y; viewportEl.classList.add('grabbing'); }
+  function pointerMove(x,y){
+    if(!dragging) return;
+    const dx = x-lastX, dy = y-lastY;
+    lastX=x; lastY=y;
+    camTheta -= dx*0.006;
+    camPhi   = Math.min(Math.max(camPhi - dy*0.006, 0.25), Math.PI-0.25);
+    updateCamera();
+  }
+  function pointerUp(){ dragging=false; viewportEl.classList.remove('grabbing'); }
+
+  viewportEl.addEventListener('mousedown', e=>pointerDown(e.clientX,e.clientY));
+  window.addEventListener('mousemove', e=>pointerMove(e.clientX,e.clientY));
+  window.addEventListener('mouseup', pointerUp);
+  viewportEl.addEventListener('touchstart', e=>{ const t=e.touches[0]; pointerDown(t.clientX,t.clientY); }, {passive:true});
+  viewportEl.addEventListener('touchmove', e=>{ const t=e.touches[0]; pointerMove(t.clientX,t.clientY); }, {passive:true});
+  viewportEl.addEventListener('touchend', pointerUp);
+  viewportEl.addEventListener('wheel', e=>{
+    e.preventDefault();
+    camRadius = Math.min(Math.max(camRadius + e.deltaY*0.004, 3), 14);
+    updateCamera();
+  }, {passive:false});
+
+  /* ---- resize handling ---- */
+  function resize3D(){
+    const w = viewportEl.clientWidth, h = viewportEl.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w/h;
+    camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize3D).observe(viewportEl);
+  resize3D();
+
+  /* ============ ATTITUDE APPLICATION ============ */
+  const deg2rad = THREE.MathUtils.degToRad;
+
+  function applyAttitude(rollDeg, pitchDeg){
+    const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), deg2rad(pitchDeg));
+    const qRoll  = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), deg2rad(-rollDeg));
+    const q = new THREE.Quaternion().multiplyQuaternions(qRoll, qPitch);
+    planeGroup.quaternion.copy(q);
+  }
+
+  function applyAilerons(alDeg, arDeg){
+    aileronPivotL.rotation.x = deg2rad(-alDeg);
+    aileronPivotR.rotation.x = deg2rad(-arDeg);
+  }
+
+  /* ============ ARTIFICIAL HORIZON (2D) ============ */
+  const hCanvas = document.getElementById('horizonCanvas');
+  const hCtx = hCanvas.getContext('2d');
+  const HC = 86; // center (172/2)
+  const PX_PER_DEG = 3.1;
+
+  function drawHorizon(rollDeg, pitchDeg){
+    const ctx = hCtx;
+    ctx.save();
+    ctx.clearRect(0,0,172,172);
+    ctx.translate(HC, HC);
+    ctx.rotate(deg2rad(-rollDeg));
+
+    const pitchOffset = pitchDeg * PX_PER_DEG;
+
+    // sky
+    ctx.fillStyle = '#2c5d84';
+    ctx.fillRect(-140, -140 + pitchOffset, 280, 140);
+    // ground
+    ctx.fillStyle = '#4a3420';
+    ctx.fillRect(-140, pitchOffset, 280, 140);
+    // horizon line
+    ctx.strokeStyle = '#e8eef2';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-140, pitchOffset); ctx.lineTo(140, pitchOffset); ctx.stroke();
+
+    // pitch ladder
+    ctx.strokeStyle = 'rgba(232,238,242,0.75)';
+    ctx.fillStyle = 'rgba(232,238,242,0.85)';
+    ctx.font = '8px JetBrains Mono, monospace';
+    ctx.lineWidth = 1;
+    for(let d=-90; d<=90; d+=10){
+      if(d===0) continue;
+      const y = pitchOffset - d*PX_PER_DEG;
+      if(y < -80 || y > 80) continue;
+      const w = (d%30===0) ? 26 : 14;
+      ctx.beginPath(); ctx.moveTo(-w,y); ctx.lineTo(w,y); ctx.stroke();
+      if(d%30===0){
+        ctx.textAlign='right';
+        ctx.fillText(String(d), -w-4, y+3);
+      }
+    }
+    ctx.restore();
+
+    // fixed roll pointer arc (bezel) — drawn without rotation
+    ctx.save();
+    ctx.translate(HC, HC);
+    ctx.strokeStyle = '#e8eef2';
+    ctx.lineWidth = 1.5;
+    [-60,-45,-30,-20,-10,0,10,20,30,45,60].forEach(a=>{
+      const rad = deg2rad(a-90);
+      const r1 = 78, r2 = (a===0||Math.abs(a)===30||Math.abs(a)===60) ? 68 : 72;
+      ctx.beginPath();
+      ctx.moveTo(r1*Math.cos(rad), r1*Math.sin(rad));
+      ctx.lineTo(r2*Math.cos(rad), r2*Math.sin(rad));
+      ctx.stroke();
+    });
+    // top roll index (fixed triangle)
+    ctx.fillStyle = '#e8a33d';
+    ctx.beginPath();
+    ctx.moveTo(0,-78); ctx.lineTo(-5,-68); ctx.lineTo(5,-68); ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    // fixed aircraft symbol (center reference)
+    ctx.save();
+    ctx.translate(HC, HC);
+    ctx.strokeStyle = '#e8a33d';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(-24,0); ctx.lineTo(-7,0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(7,0); ctx.lineTo(24,0); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0,0,2.5,0,Math.PI*2); ctx.fillStyle='#e8a33d'; ctx.fill();
+    ctx.restore();
+  }
+
+  /* ============ READOUTS ============ */
+  const rollValEl = document.getElementById('rollVal');
+  const pitchValEl = document.getElementById('pitchVal');
+  const barL = document.getElementById('barL');
+  const barR = document.getElementById('barR');
+  const valL = document.getElementById('valL');
+  const valR = document.getElementById('valR');
+
+  function barPos(deg){ // map -30..30 -> 0..100%
+    const clamped = Math.min(Math.max(deg, -30), 30);
+    return 50 + (clamped/30)*48;
+  }
+
+  function updateReadouts(s){
+    rollValEl.textContent  = s.roll.toFixed(1) + '°';
+    pitchValEl.textContent = s.pitch.toFixed(1) + '°';
+    rollValEl.className  = 'v' + (Math.abs(s.roll)>45 ? ' warn':'');
+    pitchValEl.className = 'v' + (Math.abs(s.pitch)>30 ? ' warn':'');
+    barL.style.left = barPos(s.aileronL) + '%';
+    barR.style.left = barPos(s.aileronR) + '%';
+    valL.textContent = s.aileronL.toFixed(1) + '°';
+    valR.textContent = s.aileronR.toFixed(1) + '°';
+  }
+
+  /* ============ DEMO CONTROLS ============ */
+  const sRoll = document.getElementById('sRoll');
+  const sPitch = document.getElementById('sPitch');
+  const sAil = document.getElementById('sAil');
+  const sRollLbl = document.getElementById('sRollLbl');
+  const sPitchLbl = document.getElementById('sPitchLbl');
+  const sAilLbl = document.getElementById('sAilLbl');
+  const autoSweepCb = document.getElementById('autoSweep');
+
+  function syncSliderLabels(){
+    sRollLbl.textContent = sRoll.value + '°';
+    sPitchLbl.textContent = sPitch.value + '°';
+    sAilLbl.textContent = sAil.value + '°';
+  }
+  function setSlidersEnabled(en){
+    sRoll.disabled = !en; sPitch.disabled = !en; sAil.disabled = !en;
+  }
+  [sRoll,sPitch,sAil].forEach(s=>{
+    s.addEventListener('input', ()=>{
+      autoSweepCb.checked = false;
+      autoSweep = false;
+      syncSliderLabels();
+      target.roll = parseFloat(sRoll.value);
+      target.pitch = parseFloat(sPitch.value);
+      const a = parseFloat(sAil.value);
+      target.aileronL = -a;
+      target.aileronR = a;
+    });
+  });
+  autoSweepCb.addEventListener('change', ()=>{ autoSweep = autoSweepCb.checked; });
+  syncSliderLabels();
+  setSlidersEnabled(true);
+
+  /* ============ SERIAL (Web Serial API) ============ */
+  const connectBtn = document.getElementById('connectBtn');
+  const disconnectBtn = document.getElementById('disconnectBtn');
+  const baudSelect = document.getElementById('baudSelect');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+
+  function setStatus(kind, text){
+    statusDot.className = 'dot' + (kind ? ' '+kind : '');
+    statusText.textContent = text;
+  }
+
+  function parseLine(line){
+    const parts = line.split(',');
+    let r=null,p=null,al=null,ar=null,a=null;
+    for(const part of parts){
+      const idx = part.indexOf(':');
+      if(idx<0) continue;
+      const k = part.slice(0,idx).trim().toUpperCase();
+      const num = parseFloat(part.slice(idx+1));
+      if(isNaN(num)) continue;
+      if(k==='R') r=num;
+      else if(k==='P') p=num;
+      else if(k==='AL') al=num;
+      else if(k==='AR') ar=num;
+      else if(k==='A') a=num;
+    }
+    if(r!==null) target.roll = r;
+    if(p!==null) target.pitch = p;
+    if(al!==null) target.aileronL = al;
+    if(ar!==null) target.aileronR = ar;
+    else if(a!==null){ target.aileronL = -a; target.aileronR = a; }
+  }
+
+  async function readLoop(){
+    const decoder = new TextDecoderStream();
+    const closedPromise = port.readable.pipeTo(decoder.writable).catch(()=>{});
+    const reader = decoder.readable.getReader();
+    let buf = '';
+    try{
+      while(keepReading){
+        const { value, done } = await reader.read();
+        if(done) break;
+        buf += value;
+        let idx;
+        while((idx = buf.indexOf('\n')) >= 0){
+          const line = buf.slice(0, idx).trim();
+          buf = buf.slice(idx+1);
+          if(line) parseLine(line);
+        }
+      }
+    } catch(e){
+      console.error('read error', e);
+      setStatus('err', 'Помилка читання: ' + e.message);
+    } finally {
+      reader.releaseLock();
+      await closedPromise;
+    }
+  }
+
+  async function connectSerial(){
+    if(!('serial' in navigator)){
+      setStatus('err', 'Web Serial API недоступний у цьому середовищі (потрібен Chrome/Edge, не iframe-пісочниця).');
+      return;
+    }
+    try{
+      port = await navigator.serial.requestPort();
+      await port.open({ baudRate: parseInt(baudSelect.value, 10) });
+      mode = 'live';
+      keepReading = true;
+      autoSweep = false;
+      autoSweepCb.checked = false;
+      setSlidersEnabled(false);
+      setStatus('live', 'Підключено · очікування даних...');
+      connectBtn.disabled = true;
+      disconnectBtn.disabled = false;
+      readLoop();
+    } catch(e){
+      console.error(e);
+      setStatus('err', 'Не вдалося підключитись: ' + e.message);
+    }
+  }
+
+  async function disconnectSerial(){
+    keepReading = false;
+    mode = 'demo';
+    setSlidersEnabled(true);
+    try{
+      if(port){ await port.close(); }
+    } catch(e){ console.error(e); }
+    port = null;
+    connectBtn.disabled = false;
+    disconnectBtn.disabled = true;
+    setStatus('', 'Не підключено — активний демо-режим');
+  }
+
+  connectBtn.addEventListener('click', connectSerial);
+  disconnectBtn.addEventListener('click', disconnectSerial);
+
+  if(!('serial' in navigator)){
+    connectBtn.title = 'Web Serial API недоступний у цьому браузері/середовищі';
+  }
+
+  /* ============ MAIN LOOP ============ */
+  let lastFrame = performance.now();
+  function animate(now){
+    requestAnimationFrame(animate);
+    const dt = Math.min((now-lastFrame)/1000, 0.1);
+    lastFrame = now;
+
+    if(mode==='demo' && autoSweep){
+      const t = now/1000;
+      target.roll  = Math.sin(t*0.5) * 25;
+      target.pitch = Math.sin(t*0.33 + 1) * 14;
+      target.aileronL = -target.roll * 0.55;
+      target.aileronR =  target.roll * 0.55;
+    }
+
+    const smoothing = 1 - Math.pow(0.001, dt); // frame-rate independent lerp
+    current.roll     += (target.roll     - current.roll)     * smoothing;
+    current.pitch    += (target.pitch    - current.pitch)    * smoothing;
+    current.aileronL += (target.aileronL - current.aileronL) * Math.min(smoothing*1.6,1);
+    current.aileronR += (target.aileronR - current.aileronR) * Math.min(smoothing*1.6,1);
+
+    applyAttitude(current.roll, current.pitch);
+    applyAilerons(current.aileronL, current.aileronR);
+    drawHorizon(current.roll, current.pitch);
+    updateReadouts(current);
+
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(animate);
+
+})();
+</script>
+</body>
+</html>

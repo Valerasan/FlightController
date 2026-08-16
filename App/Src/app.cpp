@@ -89,10 +89,9 @@ extern "C" void app_loop(void)
     const uint32_t nowMs = HAL_GetTick();
     if (nowMs - lastLogMs >= 100) {
         lastLogMs = nowMs;
-        LOG("int=%lu who=0x%02X accel=%d,%d,%d gyro=%d,%d,%d roll=%.1f pitch=%.1f",
-            s_intCount, _imu.whoAmI(), s_lastAccel[0], s_lastAccel[1], s_lastAccel[2],
-            s_lastGyro[0], s_lastGyro[1], s_lastGyro[2],
-            _attitude.rollDeg(), _attitude.pitchDeg());
+        const float roll = _attitude.rollDeg();
+        const float pitch = _attitude.pitchDeg();
+        LOG("R:%.1f,P:%.1f,AL:%.1f,AR:%.1f", roll, pitch, roll, -roll);
     }
 
     if (_uartCrsf.frameReady()) {
@@ -105,8 +104,8 @@ extern "C" void app_loop(void)
                 us[i] = crsf_to_pwm_us(channels[i]);
             }
 
-            LOG("ch1=%u ch2=%u ch3=%u ch4=%u ch5=%u ch6=%u ch7=%u ch8=%u",
-                us[0], us[1], us[2], us[3], us[4], us[5], us[6], us[7]);
+            // LOG("ch1=%u ch2=%u ch3=%u ch4=%u ch5=%u ch6=%u ch7=%u ch8=%u",
+            //     us[0], us[1], us[2], us[3], us[4], us[5], us[6], us[7]);
         }
         _uartCrsf.consumeFrame();
     }

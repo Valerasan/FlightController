@@ -1,19 +1,4 @@
 #!/usr/bin/env python3
-"""Live 3D drone attitude view from the flight controller's USB CDC debug log.
-
-Reads the same accel=X,Y,Z gyro=X,Y,Z lines as tools/imu_tilt_view.py (see
-App/Src/app.cpp's LOG(...) call), derives roll/pitch from the raw
-accelerometer vector, and renders a simple X-frame quadcopter rotated in 3D.
-
-Usage:
-    pip install pyserial matplotlib numpy
-    python tools/imu_3d_view.py COM5
-
-Yaw is NOT shown - deriving it needs gyro-Z integration or a magnetometer,
-neither of which the firmware provides yet, so the frame only rolls and
-pitches, it never turns. See ROLL_SIGN/PITCH_SIGN below if the frame tilts
-the wrong way relative to how you're actually moving the board.
-"""
 import argparse
 import math
 import re
@@ -23,17 +8,10 @@ import numpy as np
 import serial
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 (registers the 3d projection)
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
-LINE_RE = re.compile(
-    r"accel=(-?\d+),(-?\d+),(-?\d+)\s+gyro=(-?\d+),(-?\d+),(-?\d+)"
-)
+LINE_RE = re.compile(r"roll=(-?\d+\.?\d*)\s+pitch=(-?\d+\.?\d*)")
 
-ROLL_SIGN = 1
-PITCH_SIGN = 1
-
-# X-frame quadcopter in the body frame (X=forward, Y=right, Z=up):
-# 4 arm tips (motors) plus a nose marker so "front" is visible when rotated.
 ARM_TIPS = np.array([
     [1, 1, 0],
     [1, -1, 0],
@@ -46,16 +24,10 @@ CENTER = np.array([0, 0, 0])
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("port", help="Serial port, e.g. COM5")
-    parser.add_argument("--baud", type=int, default=115200, help="Baud rate (ignored by USB CDC, kept for compatibility)")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("port")
+    parser.add_argument("--baud", type=int, default=115200)
     return parser.parse_args()
-
-
-def accel_to_tilt(ax, ay, az):
-    roll = math.radians(math.degrees(math.atan2(ay, az)) * ROLL_SIGN)
-    pitch = math.radians(math.degrees(math.atan2(-ax, math.hypot(ay, az))) * PITCH_SIGN)
-    return roll, pitch
 
 
 def rotation_matrix(roll, pitch, yaw=0.0):
@@ -93,8 +65,9 @@ def main():
             match = LINE_RE.search(raw_line)
             if not match:
                 continue
-            ax_raw, ay_raw, az_raw = (int(match.group(i)) for i in (1, 2, 3))
-            state["roll"], state["pitch"] = accel_to_tilt(ax_raw, ay_raw, az_raw)
+            roll_deg, pitch_deg = (float(match.group(i)) for i in (1, 2))
+            state["roll"] = math.radians(roll_deg)
+            state["pitch"] = math.radians(pitch_deg)
 
         rot = rotation_matrix(state["roll"], state["pitch"])
         tips_r = ARM_TIPS @ rot.T
@@ -113,8 +86,6 @@ def main():
 
         return arm_lines + [nose_line]
 
-    # Must stay referenced - FuncAnimation gets garbage-collected (and the
-    # plot silently stops updating) if nothing holds onto it.
     ani = animation.FuncAnimation(fig, update, interval=50, blit=False)
     plt.show()
     ser.close()
