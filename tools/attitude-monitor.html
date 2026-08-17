@@ -125,6 +125,13 @@
   }
   .aileron-row .val{ width:56px; text-align:right; font-size:12px; color:var(--text); }
 
+  /* ---- RC channel bars ---- */
+  .channel-row{ display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .channel-row:last-child{ margin-bottom:0; }
+  .channel-row .tag{ width:26px; font-family:'Oxanium',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); }
+  .channel-row .val{ width:48px; text-align:right; font-size:12px; color:var(--text); }
+  .channel-row .bar-fill{ background:var(--cyan); box-shadow:0 0 8px var(--cyan); }
+
   /* ---- Connection card ---- */
   .row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
   .row:last-child{ margin-bottom:0; }
@@ -223,6 +230,11 @@
       </div>
 
       <div class="card">
+        <p class="card-label">Канали · RC Channels</p>
+        <div id="channelsWrap"></div>
+      </div>
+
+      <div class="card">
         <p class="card-label">З'єднання · Serial</p>
         <div class="row">
           <select id="baudSelect">
@@ -240,8 +252,9 @@
         </div>
         <div class="hint">
           Очікуваний формат рядка (закінчується <code>\n</code>):<br>
-          <code>R:12.3,P:-4.5,AL:8.0,AR:-8.0</code><br>
-          або симетрично: <code>R:12.3,P:-4.5,A:8.0</code>
+          <code>R:12.3,P:-4.5,AL:8.0,AR:-8.0,C1:1500,...,C8:1500</code><br>
+          або симетрично: <code>R:12.3,P:-4.5,A:8.0</code><br>
+          Канали (<code>C1</code>…<code>C8</code>) необовʼязкові, в мкс.
         </div>
       </div>
 
@@ -274,8 +287,9 @@
   "use strict";
 
   /* ============ STATE ============ */
-  const target  = { roll:0, pitch:0, aileronL:0, aileronR:0 };
-  const current = { roll:0, pitch:0, aileronL:0, aileronR:0 };
+  const CHANNEL_COUNT = 8;
+  const target  = { roll:0, pitch:0, aileronL:0, aileronR:0, channels:new Array(CHANNEL_COUNT).fill(1500) };
+  const current = { roll:0, pitch:0, aileronL:0, aileronR:0, channels:new Array(CHANNEL_COUNT).fill(1500) };
   let mode = 'demo';        // 'demo' | 'live'
   let autoSweep = true;
   let port = null;
@@ -503,6 +517,25 @@
     return 50 + (clamped/30)*48;
   }
 
+  function chanBarPos(us){ // map 1000..2000 -> 2..98%
+    const clamped = Math.min(Math.max(us, 1000), 2000);
+    return 2 + ((clamped-1000)/1000)*96;
+  }
+
+  const channelsWrap = document.getElementById('channelsWrap');
+  const chanBar = [], chanVal = [];
+  for(let i=0;i<CHANNEL_COUNT;i++){
+    const row = document.createElement('div');
+    row.className = 'channel-row';
+    row.innerHTML =
+      '<div class="tag">CH'+(i+1)+'</div>'+
+      '<div class="bar-track"><div class="bar-fill"></div></div>'+
+      '<div class="val">1500</div>';
+    channelsWrap.appendChild(row);
+    chanBar.push(row.querySelector('.bar-fill'));
+    chanVal.push(row.querySelector('.val'));
+  }
+
   function updateReadouts(s){
     rollValEl.textContent  = s.roll.toFixed(1) + '°';
     pitchValEl.textContent = s.pitch.toFixed(1) + '°';
@@ -512,6 +545,11 @@
     barR.style.left = barPos(s.aileronR) + '%';
     valL.textContent = s.aileronL.toFixed(1) + '°';
     valR.textContent = s.aileronR.toFixed(1) + '°';
+
+    for(let i=0;i<CHANNEL_COUNT;i++){
+      chanBar[i].style.left = chanBarPos(s.channels[i]) + '%';
+      chanVal[i].textContent = Math.round(s.channels[i]);
+    }
   }
 
   /* ============ DEMO CONTROLS ============ */
@@ -573,6 +611,7 @@
       else if(k==='AL') al=num;
       else if(k==='AR') ar=num;
       else if(k==='A') a=num;
+      else if(/^C[1-8]$/.test(k)) target.channels[Number(k[1])-1] = num;
     }
     if(r!==null) target.roll = r;
     if(p!==null) target.pitch = p;
@@ -670,6 +709,9 @@
     current.pitch    += (target.pitch    - current.pitch)    * smoothing;
     current.aileronL += (target.aileronL - current.aileronL) * Math.min(smoothing*1.6,1);
     current.aileronR += (target.aileronR - current.aileronR) * Math.min(smoothing*1.6,1);
+    for(let i=0;i<CHANNEL_COUNT;i++){
+      current.channels[i] += (target.channels[i] - current.channels[i]) * Math.min(smoothing*1.6,1);
+    }
 
     applyAttitude(current.roll, current.pitch);
     applyAilerons(current.aileronL, current.aileronR);

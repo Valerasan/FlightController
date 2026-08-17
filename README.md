@@ -29,11 +29,12 @@ The firmware logs attitude data over the USB CDC virtual COM port every
 100 ms:
 
 ```
-R:12.3,P:-4.5,AL:8.0,AR:-8.0
+R:12.3,P:-4.5,AL:8.0,AR:-8.0,C1:1500,C2:1500,C3:1500,C4:1500,C5:1500,C6:1500,C7:1500,C8:1500
 ```
 
-(`R` = roll, `P` = pitch, `AL`/`AR` = left/right aileron mix, all in
-degrees.)
+(`R` = roll, `P` = pitch, `AL`/`AR` = left/right aileron mix in degrees;
+`C1`-`C8` = the first 8 RC channels in microseconds, from the last CRSF
+frame received.)
 
 ![Attitude debug](img/attitude_debug.png)
 
@@ -41,7 +42,7 @@ To watch this data live, connect to the board's COM port with one of:
 
 - `tools/attitude-monitor.html` — open in Chrome/Edge and click
   **Підключити** to connect via the Web Serial API; shows a 3D model,
-  artificial horizon, and aileron bars.
+  artificial horizon, aileron bars, and the first 8 RC channels.
 - `tools/imu_tilt_view.py COM5` — 2D roll/pitch line plot
   (`pip install pyserial matplotlib`).
 - `tools/imu_3d_view.py COM5` — 3D quadcopter attitude view

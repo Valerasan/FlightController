@@ -14,6 +14,7 @@ ImuLsm6ds3::ImuLsm6ds3(SPI_HandleTypeDef *hspi, GPIO_TypeDef *csPort, uint16_t c
     _ctx.read_reg = readReg;
     _ctx.mdelay = nullptr;
     _ctx.handle = this;
+    _dmaTxBuf[0] = LSM6DS3_OUTX_L_G | 0x80;
 }
 
 bool ImuLsm6ds3::init()
@@ -52,6 +53,41 @@ bool ImuLsm6ds3::readRaw(int16_t accel[3], int16_t gyro[3])
         return false;
     }
     return true;
+}
+
+bool ImuLsm6ds3::startReadRawDma()
+{
+    if (_dmaBusy) {
+        return false;
+    }
+    _dmaBusy = true;
+
+    HAL_GPIO_WritePin(_csPort, _csPin, GPIO_PIN_RESET);
+    if (HAL_SPI_TransmitReceive_DMA(_hspi, _dmaTxBuf, _dmaRxBuf, sizeof(_dmaTxBuf)) != HAL_OK) {
+        HAL_GPIO_WritePin(_csPort, _csPin, GPIO_PIN_SET);
+        _dmaBusy = false;
+        return false;
+    }
+    return true;
+}
+
+void ImuLsm6ds3::onDmaComplete()
+{
+    HAL_GPIO_WritePin(_csPort, _csPin, GPIO_PIN_SET);
+
+    int16_t gyro[3];
+    int16_t accel[3];
+    gyro[0]  = static_cast<int16_t>((_dmaRxBuf[2]  << 8) | _dmaRxBuf[1]);
+    gyro[1]  = static_cast<int16_t>((_dmaRxBuf[4]  << 8) | _dmaRxBuf[3]);
+    gyro[2]  = static_cast<int16_t>((_dmaRxBuf[6]  << 8) | _dmaRxBuf[5]);
+    accel[0] = static_cast<int16_t>((_dmaRxBuf[8]  << 8) | _dmaRxBuf[7]);
+    accel[1] = static_cast<int16_t>((_dmaRxBuf[10] << 8) | _dmaRxBuf[9]);
+    accel[2] = static_cast<int16_t>((_dmaRxBuf[12] << 8) | _dmaRxBuf[11]);
+
+    if (_sampleReadyCb) {
+        _sampleReadyCb(accel, gyro);
+    }
+    _dmaBusy = false;
 }
 
 int32_t ImuLsm6ds3::writeReg(void *handle, uint8_t reg, const uint8_t *data, uint16_t len)
