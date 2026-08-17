@@ -72,6 +72,11 @@ extern "C" void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
     _imu.onDmaComplete();
 }
 
+extern "C" void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
+{
+    _imu.onDmaError();
+}
+
 
 extern "C" void app_init(void)
 {
@@ -80,7 +85,9 @@ extern "C" void app_init(void)
     _imu.setSampleReadyCallback(&onImuSampleReady);
 
     if (!_imu.init()) {
-        LOG("lsm6ds3 init failed (bad WHO_AM_I / SPI wiring?)");
+        LOG("lsm6ds3 init failed, who=0x%02X (bad WHO_AM_I / SPI wiring?)", _imu.whoAmI());
+    } else {
+        LOG("lsm6ds3 init ok, who=0x%02X", _imu.whoAmI());
     }
 
     HAL_Delay(5000);

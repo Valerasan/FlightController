@@ -23,6 +23,7 @@ public:
 
     bool startReadRawDma();
     void onDmaComplete();
+    void onDmaError();
 
 private:
     static int32_t writeReg(void *handle, uint8_t reg, const uint8_t *data, uint16_t len);

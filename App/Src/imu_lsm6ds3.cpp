@@ -90,6 +90,12 @@ void ImuLsm6ds3::onDmaComplete()
     _dmaBusy = false;
 }
 
+void ImuLsm6ds3::onDmaError()
+{
+    HAL_GPIO_WritePin(_csPort, _csPin, GPIO_PIN_SET);
+    _dmaBusy = false;
+}
+
 int32_t ImuLsm6ds3::writeReg(void *handle, uint8_t reg, const uint8_t *data, uint16_t len)
 {
     auto *self = static_cast<ImuLsm6ds3 *>(handle);
