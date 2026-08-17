@@ -23,31 +23,30 @@ on top. Currently reads a CRSF RC receiver over UART1.
 | `tools/cubemx_cleanup.py` | Runs automatically before every build (`extra_scripts` in `platformio.ini`); deletes IDE project scaffolding CubeMX regenerates (`EWARM/`, `Drivers/`, etc.) that PlatformIO doesn't need. |
 | `FlightController.ioc` | CubeMX project file. |
 
-### `App/` structure
+## Debugging over UART
 
-- `app.cpp` — `app_init()`/`app_loop()`, called from `Core/Src/main.c`'s
-  `USER CODE BEGIN 2` / `USER CODE BEGIN WHILE` sections. CRSF channel
-  decoding (`crsf_parse_channels`, `crsf_to_pwm_us`) lives here for now.
-- `uart.h`/`uart.cpp` — `UartBase`: generic interrupt-driven UART receive
-  (byte-at-a-time), instance registry (`MAX_UARTS`), dispatches
-  `HAL_UART_RxCpltCallback` to the right instance. Protocol-agnostic —
-  `parseByte()` is a pure-virtual hook.
-- `uart_crsf.h`/`uart_crsf.cpp` — `UartCrsf : public UartBase`, implements
-  CRSF frame sync/length/CRC parsing. Exposes the last valid frame via
-  `frameReady()`/`frameType()`/`framePayload()`/`consumeFrame()`.
-- `log.h`/`log.cpp` — `log_printf()`, writes to the USB CDC virtual COM
-  port via `CDC_Transmit_FS`. **Do not use `printf()` directly** — the
-  build links `--specs=nosys.specs`, so its `_write()` syscall is a stub
-  and output silently goes nowhere.
-- `define.h` — `LOG(fmt, ...)` macro (wraps `log_printf`, appends `\n`;
-  `fmt` must be a string literal), LED helper macros.
-
-## Building / flashing
+The firmware logs attitude data over the USB CDC virtual COM port every
+100 ms:
 
 ```
-pio run                 # build
-pio run -t upload       # build + flash over ST-Link
+R:12.3,P:-4.5,AL:8.0,AR:-8.0,C1:1500,C2:1500,C3:1500,C4:1500,C5:1500,C6:1500,C7:1500,C8:1500
 ```
+
+(`R` = roll, `P` = pitch, `AL`/`AR` = left/right aileron mix in degrees;
+`C1`-`C8` = the first 8 RC channels in microseconds, from the last CRSF
+frame received.)
+
+![Attitude debug](img/attitude_debug.png)
+
+To watch this data live, connect to the board's COM port with one of:
+
+- `tools/attitude-monitor.html` — open in Chrome/Edge and click
+  **Підключити** to connect via the Web Serial API; shows a 3D model,
+  artificial horizon, aileron bars, and the first 8 RC channels.
+- `tools/imu_tilt_view.py COM5` — 2D roll/pitch line plot
+  (`pip install pyserial matplotlib`).
+- `tools/imu_3d_view.py COM5` — 3D quadcopter attitude view
+  (`pip install pyserial matplotlib numpy`).
 
 ## Editing peripherals in CubeMX
 
