@@ -48,6 +48,24 @@ To watch this data live, connect to the board's COM port with one of:
 - `tools/imu_3d_view.py COM5` — 3D quadcopter attitude view
   (`pip install pyserial matplotlib numpy`).
 
+## CRSF telemetry (attitude back to the transmitter)
+
+Besides receiving RC channels, the firmware also sends attitude back out
+over the same CRSF link (UART1) — a standard CRSF `ATTITUDE` frame
+(`0x1E`, pitch/roll in radians×10000) right after consuming each received
+RC-channels frame (`UartCrsf::sendAttitude()` in `App/Src/uart_crsf.cpp`).
+
+Two ways to see it:
+
+- **On the transmitter** (e.g. RadioMaster TX12 / EdgeTX): Model Setup →
+  Telemetry → "Discover new sensors" — `Roll`/`Ptch` sensors should show
+  up and update live. Requires the receiver to actually relay telemetry
+  back up to the handset (e.g. ExpressLRS's Telemetry Ratio must not be
+  `Off`).
+- **On a PC**, via `tools/attitude-monitor.html`: pick **CRSF (бінарний,
+  ATTITUDE 0x1E)** in the protocol dropdown (instead of the default Text
+  mode), connect at 420000 baud to whatever wire carries the CRSF line.
+
 ## Editing peripherals in CubeMX
 
 1. Open `FlightController.ioc` in STM32CubeMX, make changes, **Generate

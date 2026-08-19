@@ -1,6 +1,8 @@
 #include "uart_crsf.h"
 
 #include <cstring>
+#include <cmath>
+#include "flight_state.h"
 
 namespace {
 uint8_t crsf_crc8(const uint8_t *data, uint8_t len)
@@ -46,4 +48,46 @@ void UartCrsf::parseByte(uint8_t byte) {
             }
             break;
     }
+}
+
+
+void UartCrsf::sendAttitude() {
+    AttitudeSample attitude = _flightState.attitude();
+    float pitch_rad = attitude.pitchDeg  * (M_PI / 180.0f);
+    int16_t pitch_i16 = (int16_t)(pitch_rad * 10000.0f);  
+    float roll_rad = attitude.rollDeg * (M_PI / 180.0f);
+    int16_t roll_i16  = (int16_t)(roll_rad  * 10000.0f);
+    int16_t yaw_i16   = 0;
+
+    uint8_t data[6];
+    data[0] = (uint8_t)((pitch_i16 >> 8) & 0xFF);
+    data[1] = (uint8_t)pitch_i16 & 0xFF;
+
+    data[2] = (uint8_t)((roll_i16 >> 8) & 0xFF);
+    data[3] = (uint8_t)roll_i16 & 0xFF;
+
+    data[4] = (uint8_t)((yaw_i16 >> 8) & 0xFF);
+    data[5] = (uint8_t)yaw_i16 & 0xFF;
+    uint16_t len = makeCRSFMessage(_txFrame, data, sizeof(data));
+
+    sendMessage(_txFrame, len);
+    
+}
+
+uint16_t UartCrsf::makeCRSFMessage(uint8_t *outFrame, const uint8_t *pData, uint16_t Size) {
+    // TODO: refactor
+    uint8_t index = 0;
+    outFrame[index++] = CRSF_SYNC_BYTE;
+    
+    outFrame[index++] = Size+2;
+    //TODO: extract in variable (frame type )
+    outFrame[index++] = 0x1E; // Attitude
+    
+    for(uint8_t i = 0; i < Size; i++) {
+        outFrame[index++] = pData[i];
+    }
+
+    outFrame[index++] = crsf_crc8(&outFrame[2], Size + 1);
+
+    return index;
 }

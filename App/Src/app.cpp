@@ -101,14 +101,6 @@ extern "C" void app_init(void)
 
 extern "C" void app_loop(void)
 {
-    const AttitudeSample att = _flightState.attitude();
-    uint16_t channelsUs[FlightState::kChannelCount];
-    _flightState.channelsUs(channelsUs);
-    LOG("R:%.1f,P:%.1f,AL:%.1f,AR:%.1f,C1:%u,C2:%u,C3:%u,C4:%u,C5:%u,C6:%u,C7:%u,C8:%u",
-        att.rollDeg, att.pitchDeg, att.rollDeg, -att.rollDeg,
-        channelsUs[0], channelsUs[1], channelsUs[2], channelsUs[3],
-        channelsUs[4], channelsUs[5], channelsUs[6], channelsUs[7]);
-
     if (_uartCrsf.frameReady()) {
         if (_uartCrsf.frameType() == kCrsfFrameRcChannelsPacked) {
             uint16_t channels[kCrsfChannelCount];
@@ -120,9 +112,27 @@ extern "C" void app_loop(void)
             }
             _flightState.setChannelsUs(decodedUs);
         }
+        _uartCrsf.sendAttitude();
         _uartCrsf.consumeFrame();
     }
 
-    _LED_Blue_Toggle;
-    HAL_Delay(kBlinkPeriodMs);
+    const uint32_t nowMs = HAL_GetTick();
+
+    static uint32_t lastLogMs = 0;
+    if (nowMs - lastLogMs >= 100) {
+        lastLogMs = nowMs;
+        const AttitudeSample att = _flightState.attitude();
+        uint16_t channelsUs[FlightState::kChannelCount];
+        _flightState.channelsUs(channelsUs);
+        LOG("R:%.1f,P:%.1f,AL:%.1f,AR:%.1f,C1:%u,C2:%u,C3:%u,C4:%u,C5:%u,C6:%u,C7:%u,C8:%u",
+            att.rollDeg, att.pitchDeg, att.rollDeg, -att.rollDeg,
+            channelsUs[0], channelsUs[1], channelsUs[2], channelsUs[3],
+            channelsUs[4], channelsUs[5], channelsUs[6], channelsUs[7]);
+    }
+
+    static uint32_t lastBlinkMs = 0;
+    if (nowMs - lastBlinkMs >= kBlinkPeriodMs) {
+        lastBlinkMs = nowMs;
+        _LED_Blue_Toggle;
+    }
 }
