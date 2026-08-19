@@ -120,6 +120,7 @@ extern "C" void app_loop(void)
             }
             _flightState.setChannelsUs(decodedUs);
         }
+        _uartCrsf.sendAttitude();
         _uartCrsf.consumeFrame();
     }
 

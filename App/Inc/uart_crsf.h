@@ -24,8 +24,12 @@ public:
     uint8_t framePayloadLen() const { return _readyLen - 2; }
     void consumeFrame() { _frameReady = false; }
 
+    void sendAttitude();
+
+    
 private:
     void parseByte(uint8_t byte) override;
+    uint16_t makeCRSFMessage(uint8_t *outFrame, const uint8_t *pData, uint16_t Size);
 
     CrsfParseState _state = CrsfParseState::WaitSync;
 

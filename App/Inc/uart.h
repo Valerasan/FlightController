@@ -11,18 +11,28 @@ public:
     UartBase(UART_HandleTypeDef *huart) : _huart(huart) {};
     virtual ~UartBase() = default;
 
+    
+
     void init();
     static void handleRxCallback(UART_HandleTypeDef *huart);
+    static void handleTxCallback(UART_HandleTypeDef *huart);
+
+    
 
 protected:
     UART_HandleTypeDef* _huart;
     uint8_t _rxByte;
 
+    bool _TxReady = false;
+
     bool startReceiveIT();
     virtual void parseByte(uint8_t byte) = 0;
+    void sendMessage(const uint8_t *pData, uint16_t Size);
+
 
 private:
-    void localHandle();
+    void localRxHandle();
+    void localTxHandle();
 
     static uint8_t _uartNum;
     static UartBase* _instances[MAX_UARTS];

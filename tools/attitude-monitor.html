@@ -237,11 +237,16 @@
       <div class="card">
         <p class="card-label">З'єднання · Serial</p>
         <div class="row">
+          <select id="protocolSelect">
+            <option value="text" selected>Текст (R:...,P:...)</option>
+            <option value="crsf">CRSF (бінарний, ATTITUDE 0x1E)</option>
+          </select>
           <select id="baudSelect">
             <option value="9600">9600</option>
             <option value="57600">57600</option>
             <option value="115200" selected>115200</option>
             <option value="230400">230400</option>
+            <option value="420000">420000 (CRSF)</option>
             <option value="460800">460800</option>
           </select>
           <button class="primary" id="connectBtn">Підключити</button>
@@ -250,7 +255,7 @@
         <div class="row">
           <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">Не підключено — активний демо-режим</span></div>
         </div>
-        <div class="hint">
+        <div class="hint" id="protocolHintText">
           Очікуваний формат рядка (закінчується <code>\n</code>):<br>
           <code>R:12.3,P:-4.5,AL:8.0,AR:-8.0,C1:1500,...,C8:1500</code><br>
           або симетрично: <code>R:12.3,P:-4.5,A:8.0</code><br>
@@ -646,6 +651,107 @@
     }
   }
 
+  /* ============ CRSF (binary) ============ */
+  const CRSF_SYNC_BYTES = new Set([0xC8, 0xEE, 0xEA, 0xC0]);
+  const CRSF_FRAMETYPE_ATTITUDE = 0x1E;
+
+  function crc8dvb(buf, start, len){
+    let crc = 0;
+    for(let i=0; i<len; i++){
+      crc ^= buf[start+i];
+      for(let b=0; b<8; b++){
+        crc = (crc & 0x80) ? ((crc<<1) ^ 0xD5) & 0xFF : (crc<<1) & 0xFF;
+      }
+    }
+    return crc;
+  }
+
+  function toSigned16(v){
+    return (v & 0x8000) ? v - 0x10000 : v;
+  }
+
+  function tryParseCrsfFrame(buf, offset){
+    if(offset + 2 > buf.length) return null;
+    if(!CRSF_SYNC_BYTES.has(buf[offset])) return { invalid:true, consumed:1 };
+    const len = buf[offset+1];
+    if(len < 2 || len > 62) return { invalid:true, consumed:1 };
+    const frameEnd = offset + 2 + len;
+    if(frameEnd > buf.length) return null;
+    const crcExpected = buf[frameEnd-1];
+    const crcComputed = crc8dvb(buf, offset+2, len-1);
+    if(crcComputed !== crcExpected) return { invalid:true, consumed:1 };
+    return { invalid:false, consumed:2+len, type:buf[offset+2], payloadStart:offset+3, payloadLen:len-2 };
+  }
+
+  function handleCrsfFrame(buf, type, payloadStart, payloadLen){
+    if(type === CRSF_FRAMETYPE_ATTITUDE && payloadLen >= 6){
+      const pitchRaw = toSigned16((buf[payloadStart]   << 8) | buf[payloadStart+1]);
+      const rollRaw  = toSigned16((buf[payloadStart+2] << 8) | buf[payloadStart+3]);
+      target.pitch = pitchRaw / 10000 * (180/Math.PI);
+      target.roll  = rollRaw  / 10000 * (180/Math.PI);
+    }
+  }
+
+  async function readLoopCrsf(){
+    const reader = port.readable.getReader();
+    let buf = new Uint8Array(0);
+    try{
+      while(keepReading){
+        const { value, done } = await reader.read();
+        if(done) break;
+        if(value && value.length){
+          const merged = new Uint8Array(buf.length + value.length);
+          merged.set(buf);
+          merged.set(value, buf.length);
+          buf = merged;
+        }
+
+        let offset = 0;
+        while(offset < buf.length){
+          const res = tryParseCrsfFrame(buf, offset);
+          if(!res) break;
+          if(res.invalid){
+            offset += res.consumed;
+            continue;
+          }
+          handleCrsfFrame(buf, res.type, res.payloadStart, res.payloadLen);
+          offset += res.consumed;
+        }
+        buf = buf.slice(offset);
+      }
+    } catch(e){
+      console.error('read error', e);
+      setStatus('err', 'Помилка читання: ' + e.message);
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  const protocolSelect = document.getElementById('protocolSelect');
+  const protocolHintText = document.getElementById('protocolHintText');
+
+  function syncProtocolHint(){
+    if(protocolSelect.value === 'crsf'){
+      protocolHintText.innerHTML =
+        'Бінарний CRSF-кадр <code>ATTITUDE</code> (<code>0x1E</code>): sync, len, type, ' +
+        'pitch/roll/yaw (int16 BE, рад×10000), crc8. Читаються лише pitch/roll — ' +
+        'канали й елерони в цьому режимі не декодуються.';
+    } else {
+      protocolHintText.innerHTML =
+        'Очікуваний формат рядка (закінчується <code>\\n</code>):<br>' +
+        '<code>R:12.3,P:-4.5,AL:8.0,AR:-8.0,C1:1500,...,C8:1500</code><br>' +
+        'або симетрично: <code>R:12.3,P:-4.5,A:8.0</code><br>' +
+        'Канали (<code>C1</code>…<code>C8</code>) необовʼязкові, в мкс.';
+    }
+  }
+  protocolSelect.addEventListener('change', () => {
+    syncProtocolHint();
+    if(protocolSelect.value === 'crsf'){
+      baudSelect.value = '420000';
+    }
+  });
+  syncProtocolHint();
+
   async function connectSerial(){
     if(!('serial' in navigator)){
       setStatus('err', 'Web Serial API недоступний у цьому середовищі (потрібен Chrome/Edge, не iframe-пісочниця).');
@@ -662,7 +768,11 @@
       setStatus('live', 'Підключено · очікування даних...');
       connectBtn.disabled = true;
       disconnectBtn.disabled = false;
-      readLoop();
+      if(protocolSelect.value === 'crsf'){
+        readLoopCrsf();
+      } else {
+        readLoop();
+      }
     } catch(e){
       console.error(e);
       setStatus('err', 'Не вдалося підключитись: ' + e.message);
