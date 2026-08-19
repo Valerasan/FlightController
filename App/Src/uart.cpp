@@ -10,10 +10,11 @@ void UartBase::init() {
 }
 
 
-void UartBase::sendMessage(const uint8_t *pData, uint16_t Size) {
-    if(_TxReady) {
-        HAL_UART_Transmit_IT(_huart, pData, Size);
+HAL_StatusTypeDef UartBase::sendMessage(const uint8_t *pData, uint16_t Size) {
+    if(!_TxReady) {
+        return HAL_BUSY;
     }
+    return HAL_UART_Transmit_IT(_huart, pData, Size);
 }
 
 bool UartBase::startReceiveIT()

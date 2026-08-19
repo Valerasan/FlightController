@@ -68,11 +68,10 @@ void UartCrsf::sendAttitude() {
 
     data[4] = (uint8_t)((yaw_i16 >> 8) & 0xFF);
     data[5] = (uint8_t)yaw_i16 & 0xFF;
-    uint8_t frame[64];
-    uint16_t len = makeCRSFMessage(frame, data, sizeof(data));
+    uint16_t len = makeCRSFMessage(_txFrame, data, sizeof(data));
 
+    sendMessage(_txFrame, len);
     
-    HAL_UART_Transmit_IT(_huart, frame, len);
 }
 
 uint16_t UartCrsf::makeCRSFMessage(uint8_t *outFrame, const uint8_t *pData, uint16_t Size) {

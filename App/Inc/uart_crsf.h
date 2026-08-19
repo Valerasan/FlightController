@@ -26,7 +26,7 @@ public:
 
     void sendAttitude();
 
-    
+
 private:
     void parseByte(uint8_t byte) override;
     uint16_t makeCRSFMessage(uint8_t *outFrame, const uint8_t *pData, uint16_t Size);
@@ -40,6 +40,8 @@ private:
     volatile bool _frameReady = false;
     uint8_t _readyFrame[64];
     uint8_t _readyLen = 0;
+
+    uint8_t _txFrame[64];
 };
 
 
